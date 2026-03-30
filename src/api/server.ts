@@ -11,15 +11,18 @@ export function createServer(
   db: Database.Database,
   vectorIndex: VectorIndex,
   provider: ProviderLike,
-  vaultPath: string
+  vaultPath: string,
+  priorityPaths?: string[],
+  memoryDir?: string
 ) {
   const app = express();
   app.use(express.json());
 
   app.post('/retrieve-context', async (req: any, res: any) => {
-    const { query, topK = 5 } = req.body;
+    const { query, topK: rawTopK = 5 } = req.body;
     if (!query) return void res.status(400).json({ error: 'query required' });
-    try { res.json(await retrieveContext(db, vectorIndex, provider, query, topK)); }
+    const topK = Math.min(100, Math.max(1, Math.floor(Number(rawTopK) || 5)));
+    try { res.json(await retrieveContext(db, vectorIndex, provider, query, topK, priorityPaths)); }
     catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -39,14 +42,14 @@ export function createServer(
   app.get('/search', async (req: any, res: any) => {
     const q = req.query.q as string;
     if (!q) return void res.status(400).json({ error: 'q required' });
-    try { res.json(await retrieveContext(db, vectorIndex, provider, q)); }
+    try { res.json(await retrieveContext(db, vectorIndex, provider, q, 5, priorityPaths)); }
     catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   app.post('/memory/daily', async (req: any, res: any) => {
     const { date, text, source = 'api' } = req.body;
     if (!date || !text) return void res.status(400).json({ error: 'date and text required' });
-    try { await appendDailyMemory(vaultPath, date, { text, source }); res.json({ ok: true }); }
+    try { await appendDailyMemory(vaultPath, date, { text, source }, memoryDir); res.json({ ok: true }); }
     catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
