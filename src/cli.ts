@@ -65,6 +65,10 @@ program.command('rebuild')
   .description('Clear derived data and reindex from scratch')
   .action(async () => {
     const { config, db, provider, vectorIndex } = setup();
+    // Clear vector index — drop and recreate
+    db.prepare('DROP TABLE IF EXISTS chunk_embeddings').run();
+    vectorIndex.initTable(); // recreates it
+    // Clear SQL derived tables
     ['facts', 'relations', 'entities', 'chunks', 'notes'].forEach(t =>
       db.prepare(`DELETE FROM ${t}`).run()
     );

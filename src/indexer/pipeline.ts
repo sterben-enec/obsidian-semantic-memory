@@ -39,6 +39,16 @@ export async function indexFile(
   const now = new Date().toISOString();
   const kind = (parsed.frontmatter.kind as string | undefined) ?? null;
 
+  // Delete stale vector rows for this note's old chunks
+  if (options.vectorIndex) {
+    const oldChunkIds = db.prepare(
+      'SELECT id FROM chunks WHERE note_path = ?'
+    ).all(filePath).map((r: any) => r.id as number);
+    for (const id of oldChunkIds) {
+      options.vectorIndex.delete(id);
+    }
+  }
+
   // 6-11. Wrap all DB mutations in a transaction
   const upsertAll = db.transaction(() => {
     // 6. Upsert note row
