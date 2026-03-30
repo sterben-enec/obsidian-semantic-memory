@@ -1,3 +1,4 @@
+import { encode } from 'gpt-tokenizer';
 import { ParsedNote } from './parser';
 
 export interface Chunk {
@@ -11,12 +12,14 @@ export interface Chunk {
 
 interface ChunkOptions {
   maxTokens?: number;
+  overlapTokens?: number;
 }
 
-const tokens = (s: string) => Math.ceil(s.length / 4);
+const tokens = (s: string) => encode(s).length;
 
 export function chunkNote(note: ParsedNote, options: ChunkOptions = {}): Chunk[] {
   const max = options.maxTokens ?? 400;
+  const overlap = options.overlapTokens ?? 0;
   const lines = note.body.split('\n');
   const sections = splitByHeadings(lines);
   const chunks: Chunk[] = [];
@@ -34,7 +37,7 @@ export function chunkNote(note: ParsedNote, options: ChunkOptions = {}): Chunk[]
         tokenCount: tokens(text),
       });
     } else {
-      chunks.push(...splitByParagraphs(text, sec.headingPath, note.path, sec.startLine, max));
+      chunks.push(...splitByParagraphs(text, sec.headingPath, note.path, sec.startLine, max, overlap));
     }
   }
 
@@ -67,11 +70,13 @@ function splitByHeadings(lines: string[]): Section[] {
 
   for (let i = 0; i < lines.length; i++) {
     const h1 = lines[i].match(/^#\s+(.+)$/);
-    const h2 = lines[i].match(/^##\s+(.+)$/);
-    if (h1 || h2) {
+    const h2 = !h1 ? lines[i].match(/^##\s+(.+)$/) : null;
+    const h3 = !h1 && !h2 ? lines[i].match(/^###\s+(.+)$/) : null;
+    if (h1 || h2 || h3) {
       if (buf.length) sections.push({ headingPath: stack.join(' > '), lines: buf, startLine: start, endLine: i });
       if (h1) stack = [h1[1].trim()];
-      else stack = [stack[0] ?? '', h2![1].trim()].filter(Boolean);
+      else if (h2) stack = [stack[0] ?? '', h2[1].trim()].filter(Boolean);
+      else if (h3) stack = [stack[0] ?? '', stack[1] ?? '', h3[1].trim()].filter(Boolean);
       buf = [lines[i]];
       start = i;
     } else {
@@ -82,7 +87,7 @@ function splitByHeadings(lines: string[]): Section[] {
   return sections;
 }
 
-function splitByParagraphs(text: string, headingPath: string, notePath: string, base: number, max: number): Chunk[] {
+function splitByParagraphs(text: string, headingPath: string, notePath: string, base: number, max: number, overlapTokens: number = 0): Chunk[] {
   const paras = text.split(/\n\n+/);
   const chunks: Chunk[] = [];
   let buf: string[] = [];
@@ -96,8 +101,32 @@ function splitByParagraphs(text: string, headingPath: string, notePath: string, 
       const lc = ct.split('\n').length;
       chunks.push({ notePath, headingPath, text: ct, startLine: offset, endLine: offset + lc, tokenCount: tokens(ct) });
       offset += lc;
+
+      // Implement overlap: carry over last paragraph(s) that fit within overlapTokens
       buf = [];
       bt = 0;
+      if (overlapTokens > 0) {
+        let overlapBuf: string[] = [];
+        let overlapBt = 0;
+        // Start from the end of the previous buffer and work backwards to find paragraphs that fit
+        const prevParas = ct.split('\n\n');
+        for (let i = prevParas.length - 1; i >= 0; i--) {
+          const prevPt = tokens(prevParas[i]);
+          if (overlapBt + prevPt <= overlapTokens) {
+            overlapBuf.unshift(prevParas[i]);
+            overlapBt += prevPt;
+          } else {
+            break;
+          }
+        }
+        buf = overlapBuf;
+        bt = overlapBt;
+        // Adjust offset backwards to account for overlap content
+        if (overlapBuf.length > 0) {
+          const overlapLines = overlapBuf.join('\n\n').split('\n').length;
+          offset -= overlapLines;
+        }
+      }
     }
     buf.push(p);
     bt += pt;
