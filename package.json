@@ -1,23 +1,29 @@
 {
   "name": "obsidian-semantic-memory",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Semantic memory layer for Obsidian vaults — local-first indexing, multi-signal retrieval",
+  "main": "dist/cli.js",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "tsx src/cli.ts"
   },
-  "keywords": [],
+  "bin": {
+    "osm-memory": "dist/cli.js"
+  },
+  "keywords": ["obsidian", "semantic-memory", "mcp", "embeddings", "knowledge-graph"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@xenova/transformers": "^2.17.2",
     "better-sqlite3": "^12.8.0",
-    "chokidar": "^5.0.0",
+    "chokidar": "^3.6.0",
     "commander": "^14.0.3",
     "express": "^5.2.1",
+    "gpt-tokenizer": "^3.4.0",
     "gray-matter": "^4.0.3",
     "openai": "^6.33.0",
     "sqlite-vec": "^0.1.8"
@@ -26,6 +32,8 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
+    "@types/supertest": "^7.2.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
