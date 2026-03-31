@@ -3,6 +3,14 @@
   "version": "1.0.0",
   "description": "Semantic memory layer for Obsidian vaults — local-first indexing, multi-signal retrieval",
   "main": "dist/cli.js",
+  "files": [
+    "dist",
+    "README.md",
+    "README.ru.md",
+    "LICENSE*",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -13,6 +21,14 @@
     "osm-memory": "dist/cli.js"
   },
   "keywords": ["obsidian", "semantic-memory", "mcp", "embeddings", "knowledge-graph"],
+  "homepage": "https://github.com/sterben-enec/obsidian-semantic-memory",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sterben-enec/obsidian-semantic-memory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sterben-enec/obsidian-semantic-memory/issues"
+  },
   "author": "sterben_enec <sterben.enec@gmail.com>",
   "license": "ISC",
   "type": "commonjs",

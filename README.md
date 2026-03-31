@@ -38,13 +38,18 @@ Obsidian vault (.md files)
 ```bash
 git clone https://github.com/sterben-enec/obsidian-semantic-memory
 cd obsidian-semantic-memory
+cp .env.example .env
 npm install
 npm run build
 ```
 
+Set `VAULT_PATH` in `.env` before running the CLI against a real vault.
+
 ## Configuration
 
 All configuration is via environment variables.
+
+You can start from `.env.example` for local development.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -217,6 +222,14 @@ Patterns are matched against vault-relative paths. Directory patterns exclude re
 - SQLite database: `$VAULT_PATH/.semantic-memory/index.db`
 - Model cache: `~/.cache/osm-memory/models/`
 - Add `.semantic-memory/` to `.gitignore`
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+See [SECURITY.md](SECURITY.md).
 
 ## License
 

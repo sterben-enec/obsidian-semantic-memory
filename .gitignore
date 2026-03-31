@@ -1,4 +1,9 @@
 node_modules/
 dist/
+coverage/
 *.db
+*.sqlite
+*.log
 .env
+.env.*
+!.env.example

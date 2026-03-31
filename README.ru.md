@@ -38,13 +38,18 @@ Obsidian vault (.md файлы)
 ```bash
 git clone https://github.com/sterben-enec/obsidian-semantic-memory
 cd obsidian-semantic-memory
+cp .env.example .env
 npm install
 npm run build
 ```
 
+Перед запуском CLI укажи `VAULT_PATH` в `.env`.
+
 ## Конфигурация
 
 Всё настраивается через переменные окружения.
+
+Для локальной разработки можно начать с `.env.example`.
 
 | Переменная | Обязательно | По умолчанию | Описание |
 |-----------|-------------|--------------|----------|
@@ -217,6 +222,14 @@ Archive/old/
 - SQLite-база: `$VAULT_PATH/.semantic-memory/index.db`
 - Кеш моделей: `~/.cache/osm-memory/models/`
 - Добавьте `.semantic-memory/` в `.gitignore`
+
+## Contributing
+
+См. [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+См. [SECURITY.md](SECURITY.md).
 
 ## Лицензия
 

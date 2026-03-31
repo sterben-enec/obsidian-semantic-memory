@@ -1,0 +1,15 @@
+src/
+tests/
+fixtures/
+docs/superpowers/
+REVIEW-CORA-2026-03-31.md
+.vscode/
+.git/
+.github/
+node_modules/
+.env
+.env.*
+*.db
+*.sqlite
+*.log
+*.tsbuildinfo
