@@ -7,7 +7,6 @@ export interface ParsedNote {
   frontmatter: Record<string, unknown>;
   body: string;
   wikilinks: string[];
-  modified_at: string;
 }
 
 const WIKILINK_RE = /\[\[([^\]|#]+)(?:[|#][^\]]*)?]]/g;
@@ -15,7 +14,7 @@ const WIKILINK_RE = /\[\[([^\]|#]+)(?:[|#][^\]]*)?]]/g;
 export function parseNote(filePath: string, content: string): ParsedNote {
   const { data: frontmatter, content: rawBody } = matter(content);
   const title = rawBody.match(/^#\s+(.+)$/m)?.[1].trim() ?? path.basename(filePath, '.md');
-  const wikilinks = [...new Set([...rawBody.matchAll(new RegExp(WIKILINK_RE.source, 'g'))].map(m => m[1].trim()))];
+  const wikilinks = [...new Set([...rawBody.matchAll(new RegExp(WIKILINK_RE.source, 'g'))].map(m => m[1].trim()))].filter(Boolean);
 
   return {
     path: filePath,
@@ -23,6 +22,5 @@ export function parseNote(filePath: string, content: string): ParsedNote {
     frontmatter,
     body: rawBody.trim(),
     wikilinks,
-    modified_at: new Date().toISOString(),
   };
 }

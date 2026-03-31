@@ -4,10 +4,13 @@ import { hashContent } from './hasher';
 import { parseNote } from './parser';
 import { chunkNote } from './chunker';
 import { walkVault } from './walker';
+import type { ExtractedFact } from '../extraction/factExtractor';
 
 export interface IndexOptions {
   embeddingProvider?: { embed(texts: string[]): Promise<number[][]>; dimensions: number };
-  vectorIndex?: { upsert(id: number, embedding: number[]): void };
+  vectorIndex?: { upsert(id: number, embedding: number[]): void; delete(id: number): void };
+  chunkOptions?: { maxTokens?: number; overlapTokens?: number };
+  factExtractor?: (noteTitle: string, noteBody: string) => Promise<ExtractedFact[]>;
 }
 
 const FACT_PREDICATES = ['owner', 'status', 'updated', 'tags'] as const;
@@ -39,18 +42,21 @@ export async function indexFile(
   const now = new Date().toISOString();
   const kind = (parsed.frontmatter.kind as string | undefined) ?? null;
 
-  // Delete stale vector rows for this note's old chunks
-  if (options.vectorIndex) {
+  // Fix #2: Use two-phase note_hash commit. If embedding is configured, store ''
+  // so that a failed embed() causes the file to be re-processed on the next run.
+  // Store the real hash only after embeddings succeed (or immediately if no provider).
+  const embeddingConfigured = !!(options.embeddingProvider && options.vectorIndex);
+  const transactionHash = embeddingConfigured ? '' : noteHash;
+
+  // 6-12. Wrap all DB mutations in a transaction.
+  // Fix #1: Query old chunk IDs inside the transaction so they are only deleted
+  // from the vector index AFTER the transaction commits successfully.
+  const upsertAll = db.transaction(() => {
+    // Collect old chunk IDs for vector deletion after commit
     const oldChunkIds = db.prepare(
       'SELECT id FROM chunks WHERE note_path = ?'
     ).all(filePath).map((r: any) => r.id as number);
-    for (const id of oldChunkIds) {
-      options.vectorIndex.delete(id);
-    }
-  }
 
-  // 6-11. Wrap all DB mutations in a transaction
-  const upsertAll = db.transaction(() => {
     // 6. Upsert note row
     db.prepare(`
       INSERT INTO notes (path, title, kind, note_hash, modified_at, frontmatter_json)
@@ -65,7 +71,7 @@ export async function indexFile(
       path: filePath,
       title: parsed.title,
       kind,
-      noteHash,
+      noteHash: transactionHash,
       modifiedAt,
       frontmatterJson: JSON.stringify(parsed.frontmatter),
     });
@@ -74,7 +80,7 @@ export async function indexFile(
     db.prepare('DELETE FROM chunks WHERE note_path = ?').run(filePath);
 
     // 8. Chunk and insert, collecting inserted IDs
-    const chunks = chunkNote(parsed);
+    const chunks = chunkNote(parsed, options.chunkOptions);
     const insertChunk = db.prepare(`
       INSERT INTO chunks (note_path, heading_path, text, start_line, end_line, token_count, chunk_hash)
       VALUES (@notePath, @headingPath, @text, @startLine, @endLine, @tokenCount, @chunkHash)
@@ -142,10 +148,44 @@ export async function indexFile(
       });
     }
 
-    return insertedChunks;
+    // 12. Save wikilink relations — delete old, insert new
+    db.prepare('DELETE FROM relations WHERE source_note = ?').run(filePath);
+
+    // Fix #4: Use ESCAPE clause to prevent LIKE injection from % and _ in wikilinks
+    const findTargetEntity = db.prepare(
+      `SELECT e.id FROM entities e JOIN notes n ON e.source_note = n.path
+       WHERE n.path LIKE ? ESCAPE '\\' OR e.canonical_name = ? COLLATE NOCASE LIMIT 1`
+    );
+
+    const insertRelation = db.prepare(`
+      INSERT INTO relations (source_entity_id, relation, target_entity_id, source_note, confidence)
+      VALUES (?, 'links_to', ?, ?, 1.0)
+    `);
+
+    for (const wikilink of parsed.wikilinks) {
+      // Escape LIKE metacharacters to prevent injection
+      const safePath = wikilink.replace(/[%_\\]/g, '\\$&');
+      const target = findTargetEntity.get(`%/${safePath}.md`, wikilink) as { id: number } | undefined;
+      if (target) {
+        insertRelation.run(entityRow.id, target.id, filePath);
+      }
+    }
+
+    return { insertedChunks, oldChunkIds, entityId: entityRow.id };
   });
 
-  const insertedChunks = upsertAll() as Array<{ id: number; text: string }>;
+  // Fix #1 (cont): Delete old vectors only after transaction commits successfully
+  const { insertedChunks, oldChunkIds, entityId } = upsertAll() as {
+    insertedChunks: Array<{ id: number; text: string }>;
+    oldChunkIds: number[];
+    entityId: number;
+  };
+
+  if (options.vectorIndex) {
+    for (const id of oldChunkIds) {
+      options.vectorIndex.delete(id);
+    }
+  }
 
   // 9. Embed chunks if provider given (outside transaction — async)
   if (options.embeddingProvider && options.vectorIndex) {
@@ -153,11 +193,40 @@ export async function indexFile(
     const texts = insertedChunks.map(c => c.text);
     if (texts.length > 0) {
       const embeddings = await embeddingProvider.embed(texts);
+
+      // Fix #3: Warn on embedding count mismatch instead of silently losing vectors
+      if (embeddings.length !== texts.length) {
+        console.error(
+          `[pipeline] embedding count mismatch: expected ${texts.length}, got ${embeddings.length} for ${filePath}`
+        );
+      }
+
       for (let i = 0; i < insertedChunks.length; i++) {
         if (embeddings[i]) {
           vectorIndex.upsert(insertedChunks[i].id, embeddings[i]);
         }
       }
+    }
+
+    // Fix #2 (cont): Commit the real note_hash only after embedding succeeds
+    db.prepare('UPDATE notes SET note_hash = ? WHERE path = ?').run(noteHash, filePath);
+  }
+
+  // 11b. LLM fact extraction — runs outside transaction, after embeddings (async/network)
+  if (options.factExtractor) {
+    try {
+      const llmFacts = await options.factExtractor(parsed.title, parsed.body);
+      if (llmFacts.length > 0) {
+        const insertLlmFact = db.prepare(`
+          INSERT INTO facts (subject_entity_id, predicate, object_text, source_path, confidence, valid_from, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const fact of llmFacts) {
+          insertLlmFact.run(entityId, fact.predicate, `${fact.subject}: ${fact.object}`, filePath, fact.confidence, now, now);
+        }
+      }
+    } catch (err) {
+      console.error(`[pipeline] LLM extraction failed for ${filePath}:`, (err as Error).message);
     }
   }
 }
@@ -165,10 +234,53 @@ export async function indexFile(
 export async function indexVault(
   db: Database.Database,
   vaultPath: string,
-  options: IndexOptions = {}
-): Promise<void> {
+  options: IndexOptions = {},
+  concurrency = 5
+): Promise<{ total: number; indexed: number; errors: number }> {
   const files = await walkVault(vaultPath);
-  for (const filePath of files) {
-    await indexFile(db, filePath, options);
-  }
+  const total = files.length;
+  let indexed = 0;
+  let errors = 0;
+  let fileIdx = 0;
+  let active = 0;
+
+  if (total === 0) return { total: 0, indexed: 0, errors: 0 };
+
+  console.log(`[index] starting: ${total} files, concurrency ${concurrency}`);
+
+  return new Promise((resolve) => {
+    function onComplete() {
+      const done = indexed + errors;
+      if (done % 50 === 0 || done === total) {
+        console.log(`[index] ${done}/${total} files (${errors} errors)`);
+      }
+      if (done === total) {
+        resolve({ total, indexed, errors });
+      } else {
+        next();
+      }
+    }
+
+    function next() {
+      while (active < concurrency && fileIdx < total) {
+        const filePath = files[fileIdx++];
+        active++;
+        indexFile(db, filePath, options).then(
+          () => {
+            indexed++;
+            active--;
+            onComplete();
+          },
+          (err: unknown) => {
+            errors++;
+            active--;
+            console.error(`[index] error indexing ${filePath}:`, err);
+            onComplete();
+          }
+        );
+      }
+    }
+
+    next();
+  });
 }

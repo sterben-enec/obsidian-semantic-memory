@@ -6,10 +6,13 @@ export function lookupEntity(db: Database.Database, name: string): EntityRow | n
   const byName = db.prepare('SELECT * FROM entities WHERE canonical_name = ? COLLATE NOCASE').get(name) as any;
   if (byName) return toRow(byName);
 
-  for (const row of db.prepare('SELECT * FROM entities').all() as any[]) {
-    if ((JSON.parse(row.aliases_json ?? '[]') as string[]).some(a => a.toLowerCase() === name.toLowerCase()))
-      return toRow(row);
-  }
+  const byAlias = db.prepare(
+    `SELECT e.* FROM entities e, json_each(e.aliases_json) AS alias
+     WHERE lower(alias.value) = lower(?)
+     LIMIT 1`
+  ).get(name) as any;
+  if (byAlias) return toRow(byAlias);
+
   return null;
 }
 

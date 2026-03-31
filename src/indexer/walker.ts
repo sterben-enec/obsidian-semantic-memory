@@ -28,7 +28,10 @@ export async function walkVault(vaultPath: string, options: WalkOptions = {}): P
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
       const rel = path.relative(vaultPath, full);
-      if (patterns.some(p => rel === p.replace(/\/$/, '') || rel.startsWith(p) || rel.includes('/' + p)))
+      if (patterns.some(p => {
+        const clean = p.replace(/\/$/, '');
+        return rel === clean || rel.startsWith(clean + '/') || rel.includes('/' + clean + '/') || rel.endsWith('/' + clean);
+      }))
         continue;
       if (entry.isDirectory()) await walk(full);
       else if (entry.isFile() && entry.name.endsWith('.md')) results.push(full);
