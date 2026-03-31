@@ -22,37 +22,8 @@ export function createMcpTools(
       return result.hits;
     },
 
-    async memory_entity(args: { name: string }) {
-      return lookupEntity(db, args.name);
-    },
-
-    async memory_facts(args: { entityName: string }) {
-      const entity = lookupEntity(db, args.entityName);
-      if (!entity) return [];
-      return db.prepare('SELECT * FROM facts WHERE subject_entity_id = ? ORDER BY updated_at DESC').all(entity.id) as any[];
-    },
-
-    async memory_status(_args: {}) {
-      const counts = {
-        notes: (db.prepare('SELECT COUNT(*) as c FROM notes').get() as any).c,
-        chunks: (db.prepare('SELECT COUNT(*) as c FROM chunks').get() as any).c,
-        entities: (db.prepare('SELECT COUNT(*) as c FROM entities').get() as any).c,
-        facts: (db.prepare('SELECT COUNT(*) as c FROM facts').get() as any).c,
-        relations: (db.prepare('SELECT COUNT(*) as c FROM relations').get() as any).c,
-      };
-      return counts;
-    },
-
-    async memory_remember(args: { text: string; date?: string; source?: string }) {
-      const date = args.date ?? new Date().toISOString().substring(0, 10);
-      const source = args.source ?? 'mcp';
-      const filePath = await appendDailyMemory(config.vaultPath, date, { text: args.text, source }, config.memoryDir);
-      return { ok: true, path: filePath };
-    },
-
-    async memory_search(args: { query: string; topK?: number }) {
+    async vault_fts(args: { query: string; topK?: number }) {
       const topK = Math.min(50, Math.max(1, args.topK ?? 5));
-      // FTS5 match — falls back to empty if table not yet populated
       const rows = db.prepare(
         `SELECT c.id as chunkId, c.note_path as notePath, c.heading_path as headingPath, c.text,
                 bm25(chunks_fts) as score
@@ -65,17 +36,43 @@ export function createMcpTools(
       return rows.map(r => ({ ...r, score: Math.abs(r.score), reason: 'fts' }));
     },
 
-    async memory_store_fact(args: { subject: string; predicate: string; object: string; confidence?: number }) {
+    async vault_entity(args: { name: string }) {
+      return lookupEntity(db, args.name);
+    },
+
+    async vault_facts(args: { entityName: string }) {
+      const entity = lookupEntity(db, args.entityName);
+      if (!entity) return [];
+      return db.prepare('SELECT * FROM facts WHERE subject_entity_id = ? ORDER BY updated_at DESC').all(entity.id) as any[];
+    },
+
+    async vault_status(_args: {}) {
+      const counts = {
+        notes: (db.prepare('SELECT COUNT(*) as c FROM notes').get() as any).c,
+        chunks: (db.prepare('SELECT COUNT(*) as c FROM chunks').get() as any).c,
+        entities: (db.prepare('SELECT COUNT(*) as c FROM entities').get() as any).c,
+        facts: (db.prepare('SELECT COUNT(*) as c FROM facts').get() as any).c,
+        relations: (db.prepare('SELECT COUNT(*) as c FROM relations').get() as any).c,
+      };
+      return counts;
+    },
+
+    async vault_remember(args: { text: string; date?: string; source?: string }) {
+      const date = args.date ?? new Date().toISOString().substring(0, 10);
+      const source = args.source ?? 'mcp';
+      const filePath = await appendDailyMemory(config.vaultPath, date, { text: args.text, source }, config.memoryDir);
+      return { ok: true, path: filePath };
+    },
+
+    async vault_store_fact(args: { subject: string; predicate: string; object: string; confidence?: number }) {
       const now = new Date().toISOString();
       const confidence = args.confidence ?? 0.8;
 
-      // Find or create entity for subject
       let entity = lookupEntity(db, args.subject);
       let entityId: number;
       if (entity) {
         entityId = entity.id;
       } else {
-        // Ensure sentinel note exists for MCP-created entities
         db.prepare(
           `INSERT OR IGNORE INTO notes (path, title, kind, note_hash, modified_at, frontmatter_json) VALUES ('_mcp_', 'MCP', 'system', '_mcp_', ?, '{}')`
         ).run(now);
@@ -97,7 +94,7 @@ export function createMcpTools(
 const TOOLS = [
   {
     name: 'vault_search',
-    description: 'Search the Obsidian vault semantic memory. Returns relevant text chunks ranked by semantic similarity, entity matching, graph relations, and fact overlap.',
+    description: 'Semantic search over the Obsidian vault. Returns relevant text chunks ranked by semantic similarity, entity matching, graph relations, and fact overlap.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -108,8 +105,8 @@ const TOOLS = [
     },
   },
   {
-    name: 'memory_search',
-    description: 'Full-text search over vault chunks. Fast keyword/phrase search. Use vault_search for semantic/conceptual queries.',
+    name: 'vault_fts',
+    description: 'Full-text keyword search over vault chunks (BM25). Fast and exact. Use vault_search for semantic/conceptual queries.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -120,7 +117,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'memory_entity',
+    name: 'vault_entity',
     description: 'Look up an entity (person, project, concept) by name or alias. Returns entity details or null.',
     inputSchema: {
       type: 'object' as const,
@@ -129,7 +126,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'memory_facts',
+    name: 'vault_facts',
     description: 'Get all known facts about an entity. Returns structured subject-predicate-object triples.',
     inputSchema: {
       type: 'object' as const,
@@ -138,12 +135,12 @@ const TOOLS = [
     },
   },
   {
-    name: 'memory_status',
-    description: 'Get memory index statistics: count of notes, chunks, entities, facts, and relations.',
+    name: 'vault_status',
+    description: 'Get vault index statistics: count of notes, chunks, entities, facts, and relations.',
     inputSchema: { type: 'object' as const, properties: {} },
   },
   {
-    name: 'memory_remember',
+    name: 'vault_remember',
     description: 'Store a memory entry in the daily notes. Appends text to the daily note for the given date.',
     inputSchema: {
       type: 'object' as const,
@@ -156,7 +153,7 @@ const TOOLS = [
     },
   },
   {
-    name: 'memory_store_fact',
+    name: 'vault_store_fact',
     description: 'Store a structured fact. Creates entity if it does not exist. Format: subject-predicate-object (e.g. "Alice works_at Globex").',
     inputSchema: {
       type: 'object' as const,
