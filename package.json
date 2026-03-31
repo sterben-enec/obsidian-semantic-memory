@@ -13,7 +13,7 @@
     "osm-memory": "dist/cli.js"
   },
   "keywords": ["obsidian", "semantic-memory", "mcp", "embeddings", "knowledge-graph"],
-  "author": "",
+  "author": "sterben_enec <sterben.enec@gmail.com>",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
