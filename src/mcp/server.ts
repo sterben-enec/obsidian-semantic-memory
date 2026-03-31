@@ -16,7 +16,7 @@ export function createMcpTools(
   config: Pick<Config, 'vaultPath' | 'memoryDir' | 'priorityPaths'>
 ) {
   return {
-    async memory_search(args: { query: string; topK?: number }) {
+    async vault_search(args: { query: string; topK?: number }) {
       const topK = Math.min(100, Math.max(1, args.topK ?? 5));
       const result = await retrieveContext(db, vectorIndex, provider, args.query, topK, config.priorityPaths ?? []);
       return result.hits;
@@ -81,8 +81,8 @@ export function createMcpTools(
 
 const TOOLS = [
   {
-    name: 'memory_search',
-    description: 'Search semantic memory. Returns relevant text chunks from the Obsidian vault ranked by semantic similarity, entity matching, graph relations, and fact overlap.',
+    name: 'vault_search',
+    description: 'Search the Obsidian vault semantic memory. Returns relevant text chunks ranked by semantic similarity, entity matching, graph relations, and fact overlap.',
     inputSchema: {
       type: 'object' as const,
       properties: {

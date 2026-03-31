@@ -78,14 +78,14 @@ describe('MCP tools', () => {
     db.close();
   });
 
-  it('memory_search returns hits', async () => {
+  it('vault_search returns hits', async () => {
     const db = seedDb();
     const chunkId = (db.prepare('SELECT id FROM chunks LIMIT 1').get() as any).id;
     const idx = new VectorIndex(db, 4); idx.initTable();
     idx.upsert(chunkId, [1, 0, 0, 0]);
     const provider = { dimensions: 4, embed: vi.fn().mockResolvedValue([[0.9, 0, 0, 0]]) };
     const tools = createMcpTools(db, idx, provider as any, { vaultPath: '/v', memoryDir: 'Memory/Daily', priorityPaths: [] });
-    const result = await tools.memory_search({ query: 'engineer', topK: 5 });
+    const result = await tools.vault_search({ query: 'engineer', topK: 5 });
     expect(result.length).toBeGreaterThanOrEqual(1);
     expect(result[0].notePath).toBe('/v/john.md');
     db.close();
