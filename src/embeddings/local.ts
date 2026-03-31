@@ -2,14 +2,31 @@ import type { EmbeddingProvider } from './types';
 import path from 'path';
 import os from 'os';
 
+// Models that require asymmetric query/passage prefixes
+const E5_PREFIX_MODELS = ['multilingual-e5', 'e5-'];
+
+function needsE5Prefix(modelName: string): boolean {
+  return E5_PREFIX_MODELS.some(p => modelName.toLowerCase().includes(p));
+}
+
+// Dimension map for known models
+const MODEL_DIMENSIONS: Record<string, number> = {
+  'Xenova/all-MiniLM-L6-v2': 384,
+  'Xenova/multilingual-e5-small': 384,
+  'Xenova/multilingual-e5-base': 768,
+  'Xenova/multilingual-e5-large': 1024,
+  'intfloat/multilingual-e5-base': 768,
+};
+
 export class LocalEmbeddingProvider implements EmbeddingProvider {
-  dimensions = 384;
+  dimensions: number;
   private modelName: string;
   private extractor: any = null;
   private initPromise: Promise<any> | null = null;
 
   constructor(modelName?: string) {
-    this.modelName = modelName ?? 'Xenova/all-MiniLM-L6-v2';
+    this.modelName = modelName ?? 'Xenova/multilingual-e5-base';
+    this.dimensions = MODEL_DIMENSIONS[this.modelName] ?? 768;
   }
 
   private getExtractor(): Promise<any> {
@@ -27,7 +44,17 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
   async embed(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
     const extractor = await this.getExtractor();
-    const output = await extractor(texts, { pooling: 'mean', normalize: true });
+    const prefixed = needsE5Prefix(this.modelName)
+      ? texts.map(t => `passage: ${t}`)
+      : texts;
+    const output = await extractor(prefixed, { pooling: 'mean', normalize: true });
     return output.tolist() as number[][];
+  }
+
+  async embedQuery(text: string): Promise<number[]> {
+    const extractor = await this.getExtractor();
+    const prefixed = needsE5Prefix(this.modelName) ? `query: ${text}` : text;
+    const output = await extractor([prefixed], { pooling: 'mean', normalize: true });
+    return (output.tolist() as number[][])[0];
   }
 }

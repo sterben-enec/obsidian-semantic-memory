@@ -8,6 +8,7 @@ export interface SemanticHit {
 
 interface EmbeddingProviderLike {
   embed(texts: string[]): Promise<number[][]>;
+  embedQuery?(text: string): Promise<number[]>;
 }
 
 export async function semanticSearch(
@@ -17,7 +18,9 @@ export async function semanticSearch(
   query: string,
   topK: number
 ): Promise<SemanticHit[]> {
-  const [queryEmbedding] = await provider.embed([query]);
+  const queryEmbedding = provider.embedQuery
+    ? await provider.embedQuery(query)
+    : (await provider.embed([query]))[0];
   const hits = vectorIndex.search(queryEmbedding, topK);
   if (hits.length === 0) return [];
 
