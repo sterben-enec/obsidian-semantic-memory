@@ -8,7 +8,6 @@ const note = (body: string): ParsedNote => ({
   frontmatter: {},
   body,
   wikilinks: [],
-  modified_at: '',
 });
 
 describe('chunkNote', () => {
@@ -36,5 +35,18 @@ describe('chunkNote', () => {
       expect(c.startLine).toBeGreaterThanOrEqual(0);
       expect(c.endLine).toBeGreaterThan(c.startLine);
     });
+  });
+
+  it('creates overlapping chunks when overlapTokens is set', () => {
+    const long = ('word '.repeat(100) + '\n\n').repeat(6);
+    const chunks = chunkNote(note(long), { maxTokens: 400, overlapTokens: 50 });
+    // Adjacent chunks should share some text
+    if (chunks.length >= 2) {
+      const end1 = chunks[0].text;
+      const start2 = chunks[1].text;
+      // The overlap means the end of chunk 1 text should appear at start of chunk 2
+      const lastPara1 = end1.split('\n\n').pop()!;
+      expect(start2).toContain(lastPara1);
+    }
   });
 });

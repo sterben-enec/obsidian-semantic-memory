@@ -36,4 +36,19 @@ describe('VectorIndex', () => {
     idx.delete(1);
     expect(idx.get(1)).toBeNull();
   });
+
+  it('returns bounded scores between -1 and 1', () => {
+    const db = openDb(DB); runMigrations(db);
+    const idx = new VectorIndex(db, 4); idx.initTable();
+    idx.upsert(1, [1, 0, 0, 0]);
+    idx.upsert(2, [0, 0, 0, 1]); // orthogonal
+    const results = idx.search([1, 0, 0, 0], 2);
+    results.forEach(r => {
+      expect(r.score).toBeGreaterThanOrEqual(-1);
+      expect(r.score).toBeLessThanOrEqual(1);
+    });
+    // First result (identical) should have score close to 1
+    expect(results[0].score).toBeGreaterThan(0.9);
+    db.close();
+  });
 });
