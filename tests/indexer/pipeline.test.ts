@@ -53,20 +53,107 @@ describe('indexFile', () => {
     const db = openDb(DB); runMigrations(db);
     const embedded: Array<{id: number, vec: number[]}> = [];
     const mockProvider = { dimensions: 4, embed: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3, 0.4]]) };
-    const mockIndex = { upsert: vi.fn((id: number, vec: number[]) => embedded.push({id, vec})) };
+    const mockIndex = { upsert: vi.fn((id: number, vec: number[]) => embedded.push({id, vec})), delete: vi.fn() };
 
     await indexFile(db, `${VAULT}/People/John.md`, { embeddingProvider: mockProvider, vectorIndex: mockIndex });
     expect(mockProvider.embed).toHaveBeenCalled();
     expect(mockIndex.upsert).toHaveBeenCalled();
     db.close();
   });
+
+  it('deletes old vectors on re-index', async () => {
+    const db = openDb(DB); runMigrations(db);
+    const mockProvider = { dimensions: 4, embed: vi.fn().mockResolvedValue([[0.1, 0.2, 0.3, 0.4]]) };
+    const mockIndex = { upsert: vi.fn(), delete: vi.fn() };
+    const filePath = `${VAULT}/People/John.md`;
+
+    // First index — no old vectors to delete
+    await indexFile(db, filePath, { embeddingProvider: mockProvider, vectorIndex: mockIndex });
+    const firstChunkIds = (db.prepare('SELECT id FROM chunks WHERE note_path = ?').all(filePath) as any[]).map(r => r.id);
+    expect(firstChunkIds.length).toBeGreaterThanOrEqual(1);
+    expect(mockIndex.delete).not.toHaveBeenCalled();
+
+    // Force re-index by resetting stored hash so idempotency check doesn't skip
+    db.prepare('UPDATE notes SET note_hash = ? WHERE path = ?').run('', filePath);
+
+    // Re-index — should delete the previously inserted chunk vectors
+    await indexFile(db, filePath, { embeddingProvider: mockProvider, vectorIndex: mockIndex });
+    expect(mockIndex.delete).toHaveBeenCalledTimes(firstChunkIds.length);
+    for (const id of firstChunkIds) {
+      expect(mockIndex.delete).toHaveBeenCalledWith(id);
+    }
+    db.close();
+  });
+
+  it('saves wikilink relations between notes', async () => {
+    const db = openDb(DB); runMigrations(db);
+    // Index John first so his entity exists, then Alpha which links to People/John
+    await indexFile(db, `${VAULT}/People/John.md`);
+    await indexFile(db, `${VAULT}/Projects/Alpha.md`);
+
+    const relations = db.prepare('SELECT * FROM relations WHERE source_note LIKE ?').all('%Alpha.md') as any[];
+    expect(relations.length).toBeGreaterThanOrEqual(1);
+
+    const linkToJohn = relations.find((r: any) => {
+      const target = db.prepare('SELECT canonical_name FROM entities WHERE id = ?').get(r.target_entity_id) as any;
+      return target?.canonical_name === 'John Doe';
+    });
+    expect(linkToJohn).toBeTruthy();
+    expect(linkToJohn.relation).toBe('links_to');
+    expect(linkToJohn.confidence).toBe(1.0);
+    db.close();
+  });
+
+  it('stores LLM-extracted facts when factExtractor is provided', async () => {
+    const db = openDb(DB); runMigrations(db);
+    const mockExtractor = vi.fn().mockResolvedValue([
+      { subject: 'John', predicate: 'works_at', object: 'Acme Corp', confidence: 0.85 }
+    ]);
+
+    await indexFile(db, `${VAULT}/People/John.md`, { factExtractor: mockExtractor });
+
+    expect(mockExtractor).toHaveBeenCalledWith('John Doe', expect.any(String));
+
+    const facts = db.prepare('SELECT * FROM facts WHERE source_path LIKE ? AND predicate = ?')
+      .all('%John.md', 'works_at') as any[];
+    expect(facts).toHaveLength(1);
+    expect(facts[0].confidence).toBe(0.85);
+    db.close();
+  });
+
+  it('clears stale relations on re-index', async () => {
+    const db = openDb(DB); runMigrations(db);
+    await indexFile(db, `${VAULT}/People/John.md`);
+    await indexFile(db, `${VAULT}/Projects/Alpha.md`);
+
+    const before = (db.prepare('SELECT count(*) as c FROM relations WHERE source_note LIKE ?').get('%Alpha.md') as any).c;
+    // Re-index Alpha — relation count should stay the same (no duplicates)
+    await indexFile(db, `${VAULT}/Projects/Alpha.md`);
+    const after = (db.prepare('SELECT count(*) as c FROM relations WHERE source_note LIKE ?').get('%Alpha.md') as any).c;
+    expect(after).toBe(before);
+    db.close();
+  });
 });
 
 describe('indexVault', () => {
-  it('indexes all markdown files in vault', async () => {
+  it('indexes all markdown files in vault and returns stats', async () => {
     const db = openDb(DB); runMigrations(db);
-    await indexVault(db, VAULT);
+    const stats = await indexVault(db, VAULT);
+    expect(stats.total).toBeGreaterThanOrEqual(4);
+    expect(stats.indexed).toBe(stats.total);
+    expect(stats.errors).toBe(0);
     expect((db.prepare('SELECT count(*) as c FROM notes').get() as any).c).toBeGreaterThanOrEqual(4);
     db.close();
   });
+
+  it('returns { total: 0, indexed: 0, errors: 0 } for empty vault', async () => {
+    const db = openDb(DB); runMigrations(db);
+    const emptyVault = '/tmp/osm-empty-vault-test';
+    fs.mkdirSync(emptyVault, { recursive: true });
+    const stats = await indexVault(db, emptyVault);
+    expect(stats).toEqual({ total: 0, indexed: 0, errors: 0 });
+    fs.rmdirSync(emptyVault);
+    db.close();
+  });
+
 });
