@@ -1,39 +1,46 @@
 # obsidian-semantic-memory
 
-Semantic memory layer for Obsidian vaults. Indexes notes into a local SQLite database with vector embeddings and provides multi-signal retrieval: semantic similarity + FTS keyword search + entity matching + graph expansion + fact-aware boosting.
+Semantic memory for Obsidian — local-first indexing, semantic retrieval, FTS, entities, facts, and MCP tools for agents.
+
+[![CI](https://github.com/sterben-enec/obsidian-semantic-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/sterben-enec/obsidian-semantic-memory/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](./LICENSE)
 
 **[Русская версия → README.ru.md](README.ru.md)**
 
+## What it is
+
+`obsidian-semantic-memory` turns an Obsidian vault into a local memory layer that agents and tools can query.
+
+It indexes Markdown notes into SQLite + vector search and exposes a retrieval stack that combines:
+
+- semantic similarity
+- BM25 full-text search
+- entity lookup
+- graph relations
+- structured facts
+- recency-aware ranking
+
+It is built for **local-first personal knowledge systems** — not cloud dashboards, not hosted SaaS search.
+
+## Why use it
+
+- **Private by default** — local embeddings, local DB, localhost API
+- **Better than plain vector search** — semantic + FTS + graph + facts
+- **Agent-friendly** — MCP tools for OpenClaw, Claude Code, and other MCP clients
+- **Obsidian-native** — works directly on Markdown notes and wikilinks
+- **Live updates** — watcher reindexes changes in seconds
+
 ## Features
 
-- **Local-first** — embeddings run fully offline via `@xenova/transformers` (no API key required)
-- **Multi-signal retrieval** — semantic vectors + BM25 FTS + entity graph + structured facts + recency decay
-- **MCP server** — 7 tools for agent connectivity (Claude, OpenClaw, any MCP client)
-- **Live watcher** — vault changes indexed within seconds via chokidar
-- **Structured memory** — entities, relations, subject-predicate-object facts
-- **`.semanticignore`** — exclude files with secrets or noise from the index
+- **Local-first embeddings** via `@xenova/transformers`
+- **Multi-signal retrieval** with semantic vectors + BM25 FTS + graph/fact boosts
+- **MCP server** with 7 tools
+- **HTTP API** for local integrations
+- **Structured memory** with entities, relations, and facts
+- **`.semanticignore`** support for excluding private/noisy paths
 
-## Architecture
-
-```
-Obsidian vault (.md files)
-  → parse (frontmatter + body + wikilinks)
-  → chunk by headings / token budget (gpt-tokenizer)
-  → embed (local multilingual-e5-base or OpenAI)
-  → SQLite: notes, chunks, entities, facts, relations
-  → FTS5 virtual table (BM25 keyword search)
-  → sqlite-vec virtual table (vector similarity)
-  → multi-signal ranking (semantic + FTS + entity + graph + facts + recency)
-  → MCP server / CLI / HTTP API
-```
-
-## Requirements
-
-- Node.js 18+
-- For local embeddings: ~560 MB disk for model cache (downloaded on first run)
-- For OpenAI embeddings: `OPENAI_API_KEY`
-
-## Installation
+## Quick start
 
 ```bash
 git clone https://github.com/sterben-enec/obsidian-semantic-memory
@@ -43,69 +50,89 @@ npm install
 npm run build
 ```
 
-Set `VAULT_PATH` in `.env` before running the CLI against a real vault.
+Set `VAULT_PATH` in `.env`, then:
+
+```bash
+# full rebuild
+node dist/cli.js rebuild
+
+# incremental indexing
+node dist/cli.js index
+
+# semantic retrieval
+node dist/cli.js search "what do I know about project X"
+
+# watch for changes
+node dist/cli.js watch
+
+# local HTTP API
+node dist/cli.js serve
+
+# MCP server
+node dist/cli.js mcp
+```
+
+## Architecture
+
+```text
+Obsidian vault (.md files)
+  → parse (frontmatter + body + wikilinks)
+  → chunk by headings / token budget
+  → embed (local or OpenAI)
+  → SQLite: notes, chunks, entities, facts, relations
+  → FTS5 keyword index
+  → sqlite-vec vector index
+  → multi-signal ranking
+  → CLI / MCP / HTTP API
+```
+
+## Requirements
+
+- Node.js 18+
+- For local embeddings: ~560 MB model cache on first run
+- For OpenAI embeddings: `OPENAI_API_KEY`
 
 ## Configuration
 
-All configuration is via environment variables.
-
-You can start from `.env.example` for local development.
+All configuration is environment-based. Start from `.env.example` for local development.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `VAULT_PATH` | yes | — | Absolute path to your Obsidian vault |
 | `EMBEDDING_PROVIDER` | no | `openai` | `local` or `openai` |
-| `EMBEDDING_MODEL` | no | `Xenova/multilingual-e5-base` | Model name (local provider) |
+| `EMBEDDING_MODEL` | no | `Xenova/multilingual-e5-base` | Model name for local embeddings |
 | `OPENAI_API_KEY` | if openai | — | OpenAI API key |
 | `DB_PATH` | no | `$VAULT_PATH/.semantic-memory/index.db` | SQLite database path |
-| `MEMORY_DIR` | no | `Memory/Daily` | Vault-relative path for daily memory notes |
+| `MEMORY_DIR` | no | `Memory/Daily` | Vault-relative daily memory path |
 | `CHUNK_MAX_TOKENS` | no | `400` | Maximum tokens per chunk |
 | `CHUNK_OVERLAP_TOKENS` | no | `50` | Token overlap between chunks |
-| `PRIORITY_PATHS` | no | `""` | Comma-separated vault paths to boost in retrieval |
-| `LLM_EXTRACTION` | no | `false` | Enable LLM fact extraction (requires `OPENAI_API_KEY`) |
-| `INDEX_CONCURRENCY` | no | `5` | Parallel indexing workers (1–20) |
+| `PRIORITY_PATHS` | no | `""` | Comma-separated vault paths to boost |
+| `LLM_EXTRACTION` | no | `false` | Enable LLM fact extraction |
+| `INDEX_CONCURRENCY` | no | `5` | Parallel indexing workers |
 
-### Local embedding models
+### Recommended local models
 
 | Model | Dims | Size | Notes |
 |-------|------|------|-------|
-| `Xenova/multilingual-e5-base` | 768 | ~560 MB | Default. Best quality, multilingual |
-| `Xenova/multilingual-e5-small` | 384 | ~120 MB | Faster, lower RAM |
-| `Xenova/all-MiniLM-L6-v2` | 384 | ~25 MB | English only, very fast |
+| `Xenova/multilingual-e5-base` | 768 | ~560 MB | Best default, multilingual |
+| `Xenova/multilingual-e5-small` | 384 | ~120 MB | Faster, lighter |
+| `Xenova/all-MiniLM-L6-v2` | 384 | ~25 MB | English-only, very fast |
 
-E5 models use asymmetric query/passage prefixes automatically — no manual configuration needed.
+E5 models automatically use asymmetric `query:` / `passage:` prefixes.
 
-## Usage
+## MCP tools
 
-```bash
-export VAULT_PATH="/path/to/your/vault"
-export EMBEDDING_PROVIDER=local
-export EMBEDDING_MODEL=Xenova/multilingual-e5-base
+The MCP server exposes 7 tools over stdio:
 
-# Full index (first run or after schema changes)
-node dist/cli.js rebuild
+- `vault_search` — semantic retrieval
+- `vault_fts` — BM25 keyword/phrase search
+- `vault_entity` — entity lookup by name or alias
+- `vault_facts` — facts for an entity
+- `vault_status` — index counts and health snapshot
+- `vault_remember` — append text to a daily memory note
+- `vault_store_fact` — write a structured fact
 
-# Incremental index (only changed files)
-node dist/cli.js index
-
-# Semantic search
-node dist/cli.js search "what do I know about project X"
-node dist/cli.js search "project X" --topK 10
-
-# Watch vault for changes (runs continuously)
-node dist/cli.js watch
-
-# Start HTTP API (localhost:3456)
-node dist/cli.js serve
-node dist/cli.js serve -p 8080
-
-# Start MCP server (stdio transport)
-node dist/cli.js mcp
-```
-
-## MCP Server
-
-7 tools exposed via stdio transport. Compatible with Claude Code, OpenClaw, and any MCP client.
+Example MCP config:
 
 ```json
 {
@@ -123,31 +150,37 @@ node dist/cli.js mcp
 }
 ```
 
-| Tool | Description |
-|------|-------------|
-| `vault_search` | Semantic search — ranked by similarity + entity + graph + facts + recency |
-| `vault_fts` | Full-text keyword search (BM25). Use for exact terms and phrases |
-| `vault_entity` | Look up entity by name or alias (supports partial matching) |
-| `vault_facts` | Get all structured facts about an entity |
-| `vault_status` | Index statistics: notes / chunks / entities / facts / relations |
-| `vault_remember` | Append text to daily memory note |
-| `vault_store_fact` | Store structured fact: subject → predicate → object |
-
 ## HTTP API
 
-Binds to `127.0.0.1` only (localhost, no network exposure).
+The HTTP API binds to `127.0.0.1` only.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/retrieve-context` | Semantic retrieval. Body: `{ query, topK? }` |
-| `GET` | `/search?q=...` | Shorthand for retrieve-context |
-| `GET` | `/entity/:name` | Look up entity by name or alias |
-| `GET` | `/facts/:entityId` | Get facts for an entity |
-| `POST` | `/memory/daily` | Append to daily note. Body: `{ date, text, source? }` |
+| `POST` | `/retrieve-context` | Semantic retrieval `{ query, topK? }` |
+| `GET` | `/search?q=...` | Shorthand retrieval endpoint |
+| `GET` | `/entity/:name` | Lookup entity by name or alias |
+| `GET` | `/facts/:entityId` | Facts for an entity |
+| `POST` | `/memory/daily` | Append to daily note `{ date, text, source? }` |
 
-## Auto-start on macOS (launchd)
+## `.semanticignore`
 
-Create `~/Library/LaunchAgents/com.yourname.osm-watcher.plist`:
+Create `.semanticignore` in your vault root to exclude files from indexing:
+
+```text
+# Secrets
+config/secrets.md
+private/env.md
+
+# Directories
+Templates/
+Archive/old/
+```
+
+Patterns are matched against vault-relative paths.
+
+## macOS launchd example
+
+Create `~/Library/LaunchAgents/com.yourname.osm-watcher.plist` and run the watcher at login:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -160,8 +193,6 @@ Create `~/Library/LaunchAgents/com.yourname.osm-watcher.plist`:
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>ThrottleInterval</key>
-    <integer>5</integer>
     <key>ProgramArguments</key>
     <array>
       <string>/usr/local/opt/node@24/bin/node</string>
@@ -181,55 +212,32 @@ Create `~/Library/LaunchAgents/com.yourname.osm-watcher.plist`:
       <key>PATH</key>
       <string>/usr/local/opt/node@24/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
-    <key>StandardOutPath</key>
-    <string>/path/to/logs/osm-watcher.log</string>
-    <key>StandardErrorPath</key>
-    <string>/path/to/logs/osm-watcher.err.log</string>
   </dict>
 </plist>
 ```
 
-```bash
-launchctl load ~/Library/LaunchAgents/com.yourname.osm-watcher.plist
-```
+## Security model
 
-`KeepAlive: true` restarts the watcher automatically on crash. `RunAtLoad: true` starts it at login.
+- HTTP API binds to `127.0.0.1` only
+- MCP transport is stdio-only
+- private notes and secrets should be excluded via `.semanticignore`
+- local `.env` files should never be committed
 
-## Ignoring files
-
-Create `.semanticignore` in your vault root to exclude files from indexing (both `rebuild`/`index` and the live watcher):
-
-```
-# Credentials and secrets
-path/to/env.md
-config/secrets.md
-
-# Directories
-Templates/
-Archive/old/
-```
-
-Patterns are matched against vault-relative paths. Directory patterns exclude recursively.
-
-## Security
-
-- API server listens on `127.0.0.1` only — not accessible from the network
-- Use `.semanticignore` to keep credentials and private files out of the index
-- The MCP server runs as stdio — no network port
-
-## Data Storage
-
-- SQLite database: `$VAULT_PATH/.semantic-memory/index.db`
-- Model cache: `~/.cache/osm-memory/models/`
-- Add `.semantic-memory/` to `.gitignore`
+See [SECURITY.md](SECURITY.md) for reporting guidance.
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Security
+## GitHub About
 
-See [SECURITY.md](SECURITY.md).
+Suggested repo description:
+
+> Local-first semantic memory for Obsidian: SQLite + vector search + FTS + entities + facts + MCP tools.
+
+Suggested topics:
+
+`obsidian`, `semantic-search`, `mcp`, `knowledge-graph`, `sqlite`, `vector-search`, `local-first`, `typescript`
 
 ## License
 

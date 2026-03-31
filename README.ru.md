@@ -1,39 +1,46 @@
 # obsidian-semantic-memory
 
-Семантический слой памяти для хранилищ Obsidian. Индексирует заметки в локальную SQLite-базу с векторными эмбеддингами и обеспечивает многосигнальный поиск: семантическое сходство + FTS по ключевым словам + граф сущностей + структурированные факты + спад актуальности по времени.
+Семантическая память для Obsidian — локальная индексация, semantic retrieval, FTS, сущности, факты и MCP-инструменты для агентов.
+
+[![CI](https://github.com/sterben-enec/obsidian-semantic-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/sterben-enec/obsidian-semantic-memory/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](./LICENSE)
 
 **[English version → README.md](README.md)**
 
+## Что это
+
+`obsidian-semantic-memory` превращает vault Obsidian в локальный слой памяти, который можно опрашивать из агентов и инструментов.
+
+Он индексирует Markdown-заметки в SQLite + vector search и использует стек retrieval, который сочетает:
+
+- семантическое сходство
+- BM25 full-text search
+- lookup по сущностям
+- граф связей
+- структурированные факты
+- ранжирование с учётом свежести
+
+Проект заточен под **local-first personal knowledge systems**, а не под облачные панели и SaaS-поиск.
+
+## Зачем это нужно
+
+- **Приватно по умолчанию** — локальные эмбеддинги, локальная БД, localhost API
+- **Лучше, чем просто vector search** — semantic + FTS + graph + facts
+- **Дружит с агентами** — MCP-инструменты для OpenClaw, Claude Code и других MCP-клиентов
+- **Нативно для Obsidian** — работает прямо с Markdown и wikilinks
+- **Живые обновления** — watcher переиндексирует изменения за секунды
+
 ## Возможности
 
-- **Локально и автономно** — эмбеддинги через `@xenova/transformers`, без API-ключей
-- **Многосигнальный поиск** — векторный поиск + BM25 FTS + граф сущностей + факты + recency
-- **MCP-сервер** — 7 инструментов для агентов (Claude, OpenClaw, любой MCP-клиент)
-- **Живой watcher** — изменения в vault индексируются за секунды через chokidar
-- **Структурированная память** — сущности, отношения, факты (субъект–предикат–объект)
-- **`.semanticignore`** — исключение файлов с секретами или шумом из индекса
+- **Local-first эмбеддинги** через `@xenova/transformers`
+- **Многосигнальный retrieval**: semantic vectors + BM25 FTS + graph/fact boosts
+- **MCP-сервер** с 7 инструментами
+- **HTTP API** для локальных интеграций
+- **Структурированная память**: сущности, отношения, факты
+- **`.semanticignore`** для исключения приватных и шумных путей
 
-## Архитектура
-
-```
-Obsidian vault (.md файлы)
-  → парсинг (frontmatter + тело + wikilinks)
-  → чанкинг по заголовкам / бюджету токенов (gpt-tokenizer)
-  → эмбеддинги (локально multilingual-e5-base или OpenAI)
-  → SQLite: notes, chunks, entities, facts, relations
-  → FTS5 виртуальная таблица (BM25 поиск по словам)
-  → sqlite-vec виртуальная таблица (векторное сходство)
-  → многосигнальный ранжировщик (semantic + FTS + entity + graph + facts + recency)
-  → MCP-сервер / CLI / HTTP API
-```
-
-## Требования
-
-- Node.js 18+
-- Для локальных эмбеддингов: ~560 МБ под кеш модели (скачивается при первом запуске)
-- Для OpenAI-эмбеддингов: `OPENAI_API_KEY`
-
-## Установка
+## Быстрый старт
 
 ```bash
 git clone https://github.com/sterben-enec/obsidian-semantic-memory
@@ -43,78 +50,98 @@ npm install
 npm run build
 ```
 
-Перед запуском CLI укажи `VAULT_PATH` в `.env`.
-
-## Конфигурация
-
-Всё настраивается через переменные окружения.
-
-Для локальной разработки можно начать с `.env.example`.
-
-| Переменная | Обязательно | По умолчанию | Описание |
-|-----------|-------------|--------------|----------|
-| `VAULT_PATH` | да | — | Абсолютный путь к хранилищу Obsidian |
-| `EMBEDDING_PROVIDER` | нет | `openai` | `local` или `openai` |
-| `EMBEDDING_MODEL` | нет | `Xenova/multilingual-e5-base` | Имя модели (для local) |
-| `OPENAI_API_KEY` | если openai | — | Ключ OpenAI API |
-| `DB_PATH` | нет | `$VAULT_PATH/.semantic-memory/index.db` | Путь к SQLite-базе |
-| `MEMORY_DIR` | нет | `Memory/Daily` | Путь к папке с ежедневными заметками памяти |
-| `CHUNK_MAX_TOKENS` | нет | `400` | Максимум токенов в чанке |
-| `CHUNK_OVERLAP_TOKENS` | нет | `50` | Перекрытие токенов между чанками |
-| `PRIORITY_PATHS` | нет | `""` | Пути в vault для буста в результатах (через запятую) |
-| `LLM_EXTRACTION` | нет | `false` | Извлечение фактов через LLM (требует `OPENAI_API_KEY`) |
-| `INDEX_CONCURRENCY` | нет | `5` | Параллельные воркеры индексации (1–20) |
-
-### Локальные модели эмбеддингов
-
-| Модель | Dims | Размер | Примечание |
-|--------|------|--------|------------|
-| `Xenova/multilingual-e5-base` | 768 | ~560 МБ | По умолчанию. Лучшее качество, мультиязычная |
-| `Xenova/multilingual-e5-small` | 384 | ~120 МБ | Быстрее, меньше RAM |
-| `Xenova/all-MiniLM-L6-v2` | 384 | ~25 МБ | Только английский, очень быстрая |
-
-E5-модели автоматически используют асимметричные префиксы `query:` / `passage:` — дополнительной настройки не нужно.
-
-## Использование
+Укажи `VAULT_PATH` в `.env`, затем:
 
 ```bash
-export VAULT_PATH="/путь/к/хранилищу"
-export EMBEDDING_PROVIDER=local
-export EMBEDDING_MODEL=Xenova/multilingual-e5-base
-
-# Полный пересчёт (первый запуск или после изменения схемы)
+# полный rebuild
 node dist/cli.js rebuild
 
-# Инкрементальная индексация (только изменённые файлы)
+# инкрементальная индексация
 node dist/cli.js index
 
-# Семантический поиск
+# семантический поиск
 node dist/cli.js search "что я знаю о проекте X"
-node dist/cli.js search "проект X" --topK 10
 
-# Слежение за изменениями (работает непрерывно)
+# слежение за изменениями
 node dist/cli.js watch
 
-# HTTP API (localhost:3456)
+# локальный HTTP API
 node dist/cli.js serve
-node dist/cli.js serve -p 8080
 
-# MCP-сервер (stdio транспорт)
+# MCP server
 node dist/cli.js mcp
 ```
 
-## MCP-сервер
+## Архитектура
 
-7 инструментов через stdio-транспорт. Совместим с Claude Code, OpenClaw и любым MCP-клиентом.
+```text
+Obsidian vault (.md файлы)
+  → parse (frontmatter + body + wikilinks)
+  → chunking по заголовкам / бюджету токенов
+  → embeddings (local или OpenAI)
+  → SQLite: notes, chunks, entities, facts, relations
+  → FTS5 keyword index
+  → sqlite-vec vector index
+  → многосигнальный ranking
+  → CLI / MCP / HTTP API
+```
+
+## Требования
+
+- Node.js 18+
+- Для локальных эмбеддингов: ~560 МБ кеша модели при первом запуске
+- Для OpenAI-эмбеддингов: `OPENAI_API_KEY`
+
+## Конфигурация
+
+Всё задаётся через переменные окружения. Для локальной разработки можно начать с `.env.example`.
+
+| Переменная | Обязательно | По умолчанию | Описание |
+|-----------|-------------|--------------|----------|
+| `VAULT_PATH` | да | — | Абсолютный путь к vault Obsidian |
+| `EMBEDDING_PROVIDER` | нет | `openai` | `local` или `openai` |
+| `EMBEDDING_MODEL` | нет | `Xenova/multilingual-e5-base` | Имя модели для local embeddings |
+| `OPENAI_API_KEY` | если openai | — | OpenAI API key |
+| `DB_PATH` | нет | `$VAULT_PATH/.semantic-memory/index.db` | Путь к SQLite базе |
+| `MEMORY_DIR` | нет | `Memory/Daily` | Путь к daily memory note внутри vault |
+| `CHUNK_MAX_TOKENS` | нет | `400` | Максимум токенов в чанке |
+| `CHUNK_OVERLAP_TOKENS` | нет | `50` | Перекрытие токенов между чанками |
+| `PRIORITY_PATHS` | нет | `""` | Пути для буста в ранжировании |
+| `LLM_EXTRACTION` | нет | `false` | Включить LLM extraction фактов |
+| `INDEX_CONCURRENCY` | нет | `5` | Количество воркеров индексации |
+
+### Рекомендуемые локальные модели
+
+| Модель | Dims | Размер | Примечание |
+|--------|------|--------|------------|
+| `Xenova/multilingual-e5-base` | 768 | ~560 МБ | Лучший дефолт, мультиязычная |
+| `Xenova/multilingual-e5-small` | 384 | ~120 МБ | Быстрее и легче |
+| `Xenova/all-MiniLM-L6-v2` | 384 | ~25 МБ | Только английский, очень быстрая |
+
+E5-модели автоматически используют асимметричные префиксы `query:` / `passage:`.
+
+## MCP-инструменты
+
+MCP-сервер отдаёт 7 инструментов через stdio:
+
+- `vault_search` — semantic retrieval
+- `vault_fts` — BM25 keyword/phrase search
+- `vault_entity` — поиск сущности по имени или alias
+- `vault_facts` — факты о сущности
+- `vault_status` — snapshot состояния индекса
+- `vault_remember` — дописать текст в daily memory note
+- `vault_store_fact` — записать структурированный факт
+
+Пример MCP-конфига:
 
 ```json
 {
   "mcpServers": {
     "obsidian-memory": {
       "command": "node",
-      "args": ["/путь/к/obsidian-semantic-memory/dist/cli.js", "mcp"],
+      "args": ["/path/to/obsidian-semantic-memory/dist/cli.js", "mcp"],
       "env": {
-        "VAULT_PATH": "/путь/к/хранилищу",
+        "VAULT_PATH": "/path/to/your/vault",
         "EMBEDDING_PROVIDER": "local",
         "EMBEDDING_MODEL": "Xenova/multilingual-e5-base"
       }
@@ -123,31 +150,37 @@ node dist/cli.js mcp
 }
 ```
 
-| Инструмент | Описание |
-|-----------|----------|
-| `vault_search` | Семантический поиск — ранжируется по сходству + сущности + граф + факты + свежесть |
-| `vault_fts` | Поиск по ключевым словам (BM25). Для точных слов и фраз |
-| `vault_entity` | Поиск сущности по имени или псевдониму (поддерживает частичное совпадение) |
-| `vault_facts` | Все структурированные факты о сущности |
-| `vault_status` | Статистика индекса: заметки / чанки / сущности / факты / отношения |
-| `vault_remember` | Добавить текст в ежедневную заметку памяти |
-| `vault_store_fact` | Сохранить структурированный факт: субъект → предикат → объект |
-
 ## HTTP API
 
-Слушает только `127.0.0.1` (localhost, без доступа из сети).
+HTTP API слушает только `127.0.0.1`.
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| `POST` | `/retrieve-context` | Семантический поиск. Тело: `{ query, topK? }` |
-| `GET` | `/search?q=...` | Сокращение для retrieve-context |
-| `GET` | `/entity/:name` | Поиск сущности по имени или псевдониму |
+| `POST` | `/retrieve-context` | Semantic retrieval `{ query, topK? }` |
+| `GET` | `/search?q=...` | Короткий endpoint для retrieval |
+| `GET` | `/entity/:name` | Поиск сущности по имени или alias |
 | `GET` | `/facts/:entityId` | Факты для сущности |
-| `POST` | `/memory/daily` | Добавить в ежедневную заметку. Тело: `{ date, text, source? }` |
+| `POST` | `/memory/daily` | Дописать в daily note `{ date, text, source? }` |
 
-## Автозапуск на macOS (launchd)
+## `.semanticignore`
 
-Создайте `~/Library/LaunchAgents/com.yourname.osm-watcher.plist`:
+Создай `.semanticignore` в корне vault, чтобы исключать файлы из индексации:
+
+```text
+# Secrets
+config/secrets.md
+private/env.md
+
+# Directories
+Templates/
+Archive/old/
+```
+
+Паттерны сопоставляются с путями относительно корня vault.
+
+## Пример launchd для macOS
+
+Создай `~/Library/LaunchAgents/com.yourname.osm-watcher.plist` и запускай watcher при логине:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -160,18 +193,16 @@ node dist/cli.js mcp
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>ThrottleInterval</key>
-    <integer>5</integer>
     <key>ProgramArguments</key>
     <array>
       <string>/usr/local/opt/node@24/bin/node</string>
-      <string>/путь/к/obsidian-semantic-memory/dist/cli.js</string>
+      <string>/path/to/obsidian-semantic-memory/dist/cli.js</string>
       <string>watch</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
       <key>VAULT_PATH</key>
-      <string>/путь/к/хранилищу</string>
+      <string>/path/to/your/vault</string>
       <key>EMBEDDING_PROVIDER</key>
       <string>local</string>
       <key>EMBEDDING_MODEL</key>
@@ -181,56 +212,33 @@ node dist/cli.js mcp
       <key>PATH</key>
       <string>/usr/local/opt/node@24/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
-    <key>StandardOutPath</key>
-    <string>/путь/к/логам/osm-watcher.log</string>
-    <key>StandardErrorPath</key>
-    <string>/путь/к/логам/osm-watcher.err.log</string>
   </dict>
 </plist>
 ```
 
-```bash
-launchctl load ~/Library/LaunchAgents/com.yourname.osm-watcher.plist
-```
+## Модель безопасности
 
-`KeepAlive: true` — автоматически перезапускает watcher при падении. `RunAtLoad: true` — запускает при входе в систему.
+- HTTP API слушает только `127.0.0.1`
+- MCP transport — только stdio
+- приватные заметки и секреты надо исключать через `.semanticignore`
+- локальные `.env` нельзя коммитить
 
-## Исключение файлов из индекса
-
-Создайте `.semanticignore` в корне хранилища, чтобы исключить файлы из индексации (работает и для `rebuild`/`index`, и для живого watcher):
-
-```
-# Секреты и учётные данные
-path/to/env.md
-config/secrets.md
-
-# Директории (исключают всё внутри)
-Templates/
-Archive/old/
-```
-
-Паттерны сопоставляются с путями относительно корня vault.
-
-## Безопасность
-
-- API-сервер слушает только `127.0.0.1` — недоступен из сети
-- Используйте `.semanticignore` для файлов с секретами и приватными данными
-- MCP-сервер работает через stdio — сетевой порт не открывается
-
-## Хранение данных
-
-- SQLite-база: `$VAULT_PATH/.semantic-memory/index.db`
-- Кеш моделей: `~/.cache/osm-memory/models/`
-- Добавьте `.semantic-memory/` в `.gitignore`
+Подробности — в [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
 См. [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Security
+## GitHub About
 
-См. [SECURITY.md](SECURITY.md).
+Рекомендуемый description:
 
-## Лицензия
+> Local-first semantic memory for Obsidian: SQLite + vector search + FTS + entities + facts + MCP tools.
+
+Рекомендуемые topics:
+
+`obsidian`, `semantic-search`, `mcp`, `knowledge-graph`, `sqlite`, `vector-search`, `local-first`, `typescript`
+
+## License
 
 ISC
