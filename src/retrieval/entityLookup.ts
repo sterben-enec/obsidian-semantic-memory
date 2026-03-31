@@ -13,6 +13,18 @@ export function lookupEntity(db: Database.Database, name: string): EntityRow | n
   ).get(name) as any;
   if (byAlias) return toRow(byAlias);
 
+  // Partial match: canonical_name contains the search term (e.g. "User" → "USER.md — About User")
+  const byPartial = db.prepare(
+    `SELECT * FROM entities WHERE instr(lower(canonical_name), lower(?)) > 0 ORDER BY length(canonical_name) ASC LIMIT 1`
+  ).get(name) as any;
+  if (byPartial) return toRow(byPartial);
+
+  // Path match: source note path contains the search term (e.g. "Cora" → notes in .../Cora/...)
+  const byPath = db.prepare(
+    `SELECT * FROM entities WHERE instr(lower(source_note), lower(?)) > 0 ORDER BY length(canonical_name) ASC LIMIT 1`
+  ).get(name) as any;
+  if (byPath) return toRow(byPath);
+
   return null;
 }
 

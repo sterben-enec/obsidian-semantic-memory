@@ -50,6 +50,21 @@ export function createMcpTools(
       return { ok: true, path: filePath };
     },
 
+    async memory_search(args: { query: string; topK?: number }) {
+      const topK = Math.min(50, Math.max(1, args.topK ?? 5));
+      // FTS5 match — falls back to empty if table not yet populated
+      const rows = db.prepare(
+        `SELECT c.id as chunkId, c.note_path as notePath, c.heading_path as headingPath, c.text,
+                bm25(chunks_fts) as score
+         FROM chunks_fts
+         JOIN chunks c ON c.id = chunks_fts.rowid
+         WHERE chunks_fts MATCH ?
+         ORDER BY score
+         LIMIT ?`
+      ).all(args.query, topK) as any[];
+      return rows.map(r => ({ ...r, score: Math.abs(r.score), reason: 'fts' }));
+    },
+
     async memory_store_fact(args: { subject: string; predicate: string; object: string; confidence?: number }) {
       const now = new Date().toISOString();
       const confidence = args.confidence ?? 0.8;
@@ -88,6 +103,18 @@ const TOOLS = [
       properties: {
         query: { type: 'string', description: 'Natural language search query' },
         topK: { type: 'number', description: 'Number of results (1-100, default 5)' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'memory_search',
+    description: 'Full-text search over vault chunks. Fast keyword/phrase search. Use vault_search for semantic/conceptual queries.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Keyword or phrase to search (SQLite FTS5 syntax supported)' },
+        topK: { type: 'number', description: 'Number of results (1-50, default 5)' },
       },
       required: ['query'],
     },

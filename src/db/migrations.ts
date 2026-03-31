@@ -86,6 +86,48 @@ const migrations: Migration[] = [
       db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_unique ON facts(subject_entity_id, predicate, object_text)`).run();
     },
   },
+  {
+    version: 3,
+    name: 'fts5_chunks',
+    up: (db) => {
+      // Intentionally left as no-op — superseded by migration 4
+    },
+  },
+  {
+    version: 4,
+    name: 'fts5_chunks_fixed',
+    up: (db) => {
+      // Drop any partial v3 artefacts
+      db.prepare(`DROP TABLE IF EXISTS chunks_fts`).run();
+      db.prepare(`DROP TRIGGER IF EXISTS chunks_fts_insert`).run();
+      db.prepare(`DROP TRIGGER IF EXISTS chunks_fts_delete`).run();
+      db.prepare(`DROP TRIGGER IF EXISTS chunks_fts_update`).run();
+
+      db.prepare(`
+        CREATE VIRTUAL TABLE chunks_fts
+        USING fts5(text, heading_path, note_path UNINDEXED, content='chunks', content_rowid='id')
+      `).run();
+      // Populate from existing chunks
+      db.prepare(`INSERT INTO chunks_fts(rowid, text, heading_path, note_path) SELECT id, text, heading_path, note_path FROM chunks`).run();
+      // Triggers to keep FTS in sync with chunks table
+      db.prepare(`
+        CREATE TRIGGER chunks_fts_insert AFTER INSERT ON chunks BEGIN
+          INSERT INTO chunks_fts(rowid, text, heading_path, note_path) VALUES (new.id, new.text, new.heading_path, new.note_path);
+        END
+      `).run();
+      db.prepare(`
+        CREATE TRIGGER chunks_fts_delete AFTER DELETE ON chunks BEGIN
+          INSERT INTO chunks_fts(chunks_fts, rowid, text, heading_path, note_path) VALUES ('delete', old.id, old.text, old.heading_path, old.note_path);
+        END
+      `).run();
+      db.prepare(`
+        CREATE TRIGGER chunks_fts_update AFTER UPDATE ON chunks BEGIN
+          INSERT INTO chunks_fts(chunks_fts, rowid, text, heading_path, note_path) VALUES ('delete', old.id, old.text, old.heading_path, old.note_path);
+          INSERT INTO chunks_fts(rowid, text, heading_path, note_path) VALUES (new.id, new.text, new.heading_path, new.note_path);
+        END
+      `).run();
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {
