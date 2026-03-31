@@ -23,11 +23,11 @@ function seedDb() {
 }
 
 describe('MCP tools', () => {
-  it('memory_status returns counts', async () => {
+  it('vault_status returns counts', async () => {
     const db = seedDb();
     const idx = new VectorIndex(db, 4); idx.initTable();
     const tools = createMcpTools(db, idx, { embed: vi.fn(), dimensions: 4 } as any, { vaultPath: '/v', memoryDir: 'Memory/Daily', priorityPaths: [] });
-    const result = await tools.memory_status({});
+    const result = await tools.vault_status({});
     expect(result.notes).toBe(1);
     expect(result.chunks).toBe(1);
     expect(result.entities).toBe(1);
@@ -35,44 +35,44 @@ describe('MCP tools', () => {
     db.close();
   });
 
-  it('memory_entity finds by name', async () => {
+  it('vault_entity finds by name', async () => {
     const db = seedDb();
     const idx = new VectorIndex(db, 4); idx.initTable();
     const tools = createMcpTools(db, idx, { embed: vi.fn(), dimensions: 4 } as any, { vaultPath: '/v', memoryDir: 'Memory/Daily', priorityPaths: [] });
-    const result = await tools.memory_entity({ name: 'John' });
+    const result = await tools.vault_entity({ name: 'John' });
     expect(result).not.toBeNull();
     expect(result!.canonicalName).toBe('John');
     db.close();
   });
 
-  it('memory_entity finds by alias', async () => {
+  it('vault_entity finds by alias', async () => {
     const db = seedDb();
     const idx = new VectorIndex(db, 4); idx.initTable();
     const tools = createMcpTools(db, idx, { embed: vi.fn(), dimensions: 4 } as any, { vaultPath: '/v', memoryDir: 'Memory/Daily', priorityPaths: [] });
-    const result = await tools.memory_entity({ name: 'JD' });
+    const result = await tools.vault_entity({ name: 'JD' });
     expect(result).not.toBeNull();
     expect(result!.canonicalName).toBe('John');
     db.close();
   });
 
-  it('memory_facts returns facts for entity', async () => {
+  it('vault_facts returns facts for entity', async () => {
     const db = seedDb();
     const idx = new VectorIndex(db, 4); idx.initTable();
     const tools = createMcpTools(db, idx, { embed: vi.fn(), dimensions: 4 } as any, { vaultPath: '/v', memoryDir: 'Memory/Daily', priorityPaths: [] });
-    const result = await tools.memory_facts({ entityName: 'John' });
+    const result = await tools.vault_facts({ entityName: 'John' });
     expect(result).toHaveLength(1);
     expect(result[0].predicate).toBe('works_at');
     db.close();
   });
 
-  it('memory_store_fact creates entity and fact', async () => {
+  it('vault_store_fact creates entity and fact', async () => {
     const db = seedDb();
     const idx = new VectorIndex(db, 4); idx.initTable();
     const tools = createMcpTools(db, idx, { embed: vi.fn(), dimensions: 4 } as any, { vaultPath: '/v', memoryDir: 'Memory/Daily', priorityPaths: [] });
-    const result = await tools.memory_store_fact({ subject: 'Alice', predicate: 'works_at', object: 'Globex' });
+    const result = await tools.vault_store_fact({ subject: 'Alice', predicate: 'works_at', object: 'Globex' });
     expect(result.ok).toBe(true);
     expect(result.factId).toBeGreaterThan(0);
-    const facts = await tools.memory_facts({ entityName: 'Alice' });
+    const facts = await tools.vault_facts({ entityName: 'Alice' });
     expect(facts).toHaveLength(1);
     expect(facts[0].object_text).toBe('Globex');
     db.close();
