@@ -91,7 +91,8 @@ export async function parseConversation(
     }
 
     // Пропускаем мета-сообщения (системные уведомления Claude Code)
-    if (entry.isMeta) continue;
+    // и сайдчейн-записи (внутренние подразговоры оркестратора)
+    if (entry.isMeta || entry.isSidechain) continue;
 
     if (entry.type === "user" && entry.message?.role === "user") {
       const content: any[] = Array.isArray(entry.message.content)

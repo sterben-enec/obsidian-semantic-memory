@@ -108,4 +108,15 @@ describe("formatConversation", () => {
     expect(quoted).toContain('title: "Fix \\"critical\\" bug"');
     expect(quoted).not.toContain('title: "Fix "critical" bug"');
   });
+  it("strips newlines from session_id and project in frontmatter", () => {
+    const malformed = formatConversation({
+      ...SAMPLE,
+      sessionId: "abc\n123",
+      project: "/Users/test\r\ninjected: evil",
+    });
+    // Символы переноса строки удалены — YAML-инъекция через новую строку невозможна
+    expect(malformed).not.toContain("abc\n123");
+    expect(malformed).not.toMatch(/project:.*\n.*injected:/);
+    expect(malformed).toContain("session_id: abc 123");
+  });
 });

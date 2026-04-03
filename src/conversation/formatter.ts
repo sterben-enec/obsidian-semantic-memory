@@ -51,14 +51,17 @@ export function formatConversation(conv: ParsedConversation): string {
   const date = isoToDate(conv.timeStart);
   const timeStart = isoToTime(conv.timeStart);
   const safeTitle = conv.title.replace(/"/g, '\\"');
+  // Убираем переносы строк, чтобы не сломать YAML-фронтматтер
+  const safeSessionId = conv.sessionId.replace(/[\r\n]/g, " ");
+  const safeProject = conv.project.replace(/[\r\n]/g, " ");
 
   const frontmatter = [
     "---",
     "kind: conversation",
     `date: ${date}`,
     `time_start: ${timeStart}`,
-    `session_id: ${conv.sessionId}`,
-    `project: ${conv.project}`,
+    `session_id: ${safeSessionId}`,
+    `project: ${safeProject}`,
     `title: "${safeTitle}"`,
     "---",
   ].join("\n");

@@ -131,4 +131,24 @@ describe("parseConversation", () => {
     expect(result.title).toBe("fallback-id");
     await fs.rm(tmp);
   });
+
+  it("skips sidechain messages", async () => {
+    const os = await import("os");
+    const fs = await import("fs/promises");
+    const tmp = path.join(os.tmpdir(), "sidechain.jsonl");
+    await fs.writeFile(
+      tmp,
+      '{"type":"queue-operation","operation":"dequeue","timestamp":"2026-04-03T10:00:00.000Z"}\n' +
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Real message"}]},"uuid":"x","isMeta":false,"isSidechain":false}\n' +
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Sidechain message"}]},"uuid":"y","isMeta":false,"isSidechain":true}\n',
+      "utf8",
+    );
+    const result = await parseConversation(tmp, "test-id", "/test");
+    const userTexts = result.turns
+      .filter((t) => t.role === "user")
+      .map((t) => t.text);
+    expect(userTexts).toContain("Real message");
+    expect(userTexts).not.toContain("Sidechain message");
+    await fs.rm(tmp);
+  });
 });
