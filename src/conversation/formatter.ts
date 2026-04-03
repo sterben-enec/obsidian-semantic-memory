@@ -50,6 +50,7 @@ function formatTurn(turn: ConversationTurn): string {
 export function formatConversation(conv: ParsedConversation): string {
   const date = isoToDate(conv.timeStart);
   const timeStart = isoToTime(conv.timeStart);
+  const safeTitle = conv.title.replace(/"/g, '\\"');
 
   const frontmatter = [
     "---",
@@ -58,7 +59,7 @@ export function formatConversation(conv: ParsedConversation): string {
     `time_start: ${timeStart}`,
     `session_id: ${conv.sessionId}`,
     `project: ${conv.project}`,
-    `title: "${conv.title}"`,
+    `title: "${safeTitle}"`,
     "---",
   ].join("\n");
 

@@ -100,4 +100,12 @@ describe("formatConversation", () => {
   it("formats Write tool call as one-line blockquote", () => {
     expect(formatConversation(SAMPLE)).toContain("> **Write** `CHANGELOG.md`");
   });
+  it("escapes double quotes in title for YAML safety", () => {
+    const quoted = formatConversation({
+      ...SAMPLE,
+      title: 'Fix "critical" bug',
+    });
+    expect(quoted).toContain('title: "Fix \\"critical\\" bug"');
+    expect(quoted).not.toContain('title: "Fix "critical" bug"');
+  });
 });
