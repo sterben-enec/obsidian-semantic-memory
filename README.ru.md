@@ -70,6 +70,9 @@ node dist/cli.js serve
 
 # MCP server
 node dist/cli.js mcp
+
+# записать сессию Claude Code в vault (вызывается автоматически через Stop hook)
+node dist/cli.js log-conversation
 ```
 
 ## Архитектура
@@ -104,6 +107,7 @@ Obsidian vault (.md файлы)
 | `OPENAI_API_KEY` | если openai | — | OpenAI API key |
 | `DB_PATH` | нет | `$VAULT_PATH/.semantic-memory/index.db` | Путь к SQLite базе |
 | `MEMORY_DIR` | нет | `Memory/Daily` | Путь к daily memory note внутри vault |
+| `CONVERSATIONS_DIR` | нет | `Claude Code/Conversations` | Путь к папке с записями разговоров |
 | `CHUNK_MAX_TOKENS` | нет | `400` | Максимум токенов в чанке |
 | `CHUNK_OVERLAP_TOKENS` | нет | `50` | Перекрытие токенов между чанками |
 | `PRIORITY_PATHS` | нет | `""` | Пути для буста в ранжировании |
@@ -177,6 +181,72 @@ Archive/old/
 ```
 
 Паттерны сопоставляются с путями относительно корня vault.
+
+## Интеграция с Claude Code
+
+`log-conversation` записывает каждую сессию Claude Code как структурированную Markdown-заметку в vault. Watcher подхватывает новые файлы и индексирует их автоматически — разговоры становятся доступны через `vault_search` за секунды.
+
+### Как это работает
+
+1. Claude Code вызывает `Stop` hook при завершении сессии
+2. Hook запускает `scripts/log-conversation.sh`, который задаёт env vars и вызывает `log-conversation`
+3. Команда читает `~/.claude/projects/<project>/<session_id>.jsonl`, извлекает сообщения пользователя и ассистента, изменения кода (инструменты Edit/Write/Bash) и записывает Markdown-заметку в `CONVERSATIONS_DIR`
+4. Watcher переиндексирует новую заметку
+
+Каждая заметка выглядит так:
+
+```markdown
+---
+kind: conversation
+date: 2026-04-03
+time_start: 14:32
+session_id: 0069c9ea-…
+project: /Users/you/my-project
+title: "Исправить баг авторизации"
+---
+
+**User:** Пожалуйста, исправь баг авторизации
+
+**Assistant:** Сейчас исправлю.
+
+> **Edit** `src/auth.ts`
+> ```diff
+> - return false;
+> + return true;
+> ```
+```
+
+### Настройка
+
+1. Скопируй и отредактируй wrapper-скрипт:
+
+```bash
+cp scripts/log-conversation.sh ~/my-log-conversation.sh
+# Отредактируй VAULT_PATH, CONVERSATIONS_DIR и путь к Node.js внутри файла
+chmod +x ~/my-log-conversation.sh
+```
+
+2. Добавь `Stop` hook в `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/my-log-conversation.sh",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+3. Убедись, что watcher запущен (см. пример launchd ниже) — тогда новые заметки будут проиндексированы сразу.
 
 ## Пример launchd для macOS
 

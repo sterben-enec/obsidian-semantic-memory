@@ -70,6 +70,9 @@ node dist/cli.js serve
 
 # MCP server
 node dist/cli.js mcp
+
+# log a Claude Code session to vault (invoked automatically via Stop hook)
+node dist/cli.js log-conversation
 ```
 
 ## Architecture
@@ -104,6 +107,7 @@ All configuration is environment-based. Start from `.env.example` for local deve
 | `OPENAI_API_KEY` | if openai | — | OpenAI API key |
 | `DB_PATH` | no | `$VAULT_PATH/.semantic-memory/index.db` | SQLite database path |
 | `MEMORY_DIR` | no | `Memory/Daily` | Vault-relative daily memory path |
+| `CONVERSATIONS_DIR` | no | `Claude Code/Conversations` | Vault-relative path for conversation notes |
 | `CHUNK_MAX_TOKENS` | no | `400` | Maximum tokens per chunk |
 | `CHUNK_OVERLAP_TOKENS` | no | `50` | Token overlap between chunks |
 | `PRIORITY_PATHS` | no | `""` | Comma-separated vault paths to boost |
@@ -177,6 +181,72 @@ Archive/old/
 ```
 
 Patterns are matched against vault-relative paths.
+
+## Claude Code Integration
+
+`log-conversation` records every Claude Code session as a structured Markdown note in your vault. The existing watcher picks up new files and indexes them automatically — conversations become searchable via `vault_search` within seconds.
+
+### How it works
+
+1. Claude Code calls the `Stop` hook when a session ends
+2. The hook runs `scripts/log-conversation.sh`, which sets env vars and invokes `log-conversation`
+3. The command reads `~/.claude/projects/<project>/<session_id>.jsonl`, extracts user/assistant turns and code changes (Edit/Write/Bash tool calls), and writes a Markdown note to `CONVERSATIONS_DIR`
+4. The watcher re-indexes the new note
+
+Each note looks like:
+
+```markdown
+---
+kind: conversation
+date: 2026-04-03
+time_start: 14:32
+session_id: 0069c9ea-…
+project: /Users/you/my-project
+title: "Fix auth bug"
+---
+
+**User:** Please fix the authentication bug
+
+**Assistant:** I'll fix it now.
+
+> **Edit** `src/auth.ts`
+> ```diff
+> - return false;
+> + return true;
+> ```
+```
+
+### Setup
+
+1. Copy and edit the wrapper script:
+
+```bash
+cp scripts/log-conversation.sh ~/my-log-conversation.sh
+# Edit VAULT_PATH, CONVERSATIONS_DIR, and Node.js path inside
+chmod +x ~/my-log-conversation.sh
+```
+
+2. Add the `Stop` hook to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/path/to/my-log-conversation.sh",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+3. Make sure the watcher is running (see launchd example below) so new notes are indexed immediately.
 
 ## macOS launchd example
 
