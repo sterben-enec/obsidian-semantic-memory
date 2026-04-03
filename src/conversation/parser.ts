@@ -131,9 +131,13 @@ export async function parseConversation(
     if (entry.isMeta || entry.isSidechain) continue;
 
     if (entry.type === "user" && entry.message?.role === "user") {
-      const content: any[] = Array.isArray(entry.message.content)
-        ? entry.message.content
-        : [];
+      // content может быть строкой (короткие сессии) или массивом блоков
+      const rawContent = entry.message.content;
+      const content: any[] = Array.isArray(rawContent)
+        ? rawContent
+        : typeof rawContent === "string" && rawContent.trim()
+          ? [{ type: "text", text: rawContent }]
+          : [];
       if (isInternalUserMessage(content)) continue;
       const text = content
         .filter((b: any) => b.type === "text")
@@ -146,9 +150,12 @@ export async function parseConversation(
     }
 
     if (entry.type === "assistant" && entry.message?.role === "assistant") {
-      const content: any[] = Array.isArray(entry.message.content)
-        ? entry.message.content
-        : [];
+      const rawContent = entry.message.content;
+      const content: any[] = Array.isArray(rawContent)
+        ? rawContent
+        : typeof rawContent === "string" && rawContent.trim()
+          ? [{ type: "text", text: rawContent }]
+          : [];
       const text = content
         .filter((b: any) => b.type === "text")
         .map((b: any) => b.text as string)
@@ -177,9 +184,11 @@ export async function parseConversation(
     }
   }
 
-  // Если заголовок не найден — ждём: Claude Code записывает ai-title асинхронно
+  // Если заголовок не найден — ждём: Claude Code записывает ai-title асинхронно.
+  // Ждём только если в JSONL есть queue-operation (признак полноценной сессии).
+  // Короткие сессии без queue-operation ai-title не получают.
   const { maxRetries = 8, retryIntervalMs = 2000 } = options;
-  if (title === sessionId && maxRetries > 0) {
+  if (title === sessionId && timeStartFound && maxRetries > 0) {
     const aiTitle = await waitForAiTitle(jsonlPath, maxRetries, retryIntervalMs);
     if (aiTitle) title = aiTitle;
   }
