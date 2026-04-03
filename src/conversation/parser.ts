@@ -46,6 +46,41 @@ function isInternalUserMessage(content: any[]): boolean {
 }
 
 /**
+ * Ждёт появления записи ai-title в JSONL-файле с повторными попытками.
+ * Claude Code генерирует заголовок асинхронно после завершения сессии,
+ * поэтому Stop hook может сработать раньше, чем заголовок записан.
+ *
+ * @param jsonlPath - путь к .jsonl файлу
+ * @param retries - максимальное количество попыток (каждая с задержкой 2с)
+ */
+async function waitForAiTitle(
+  jsonlPath: string,
+  retries = 8,
+  intervalMs = 2000,
+): Promise<string | null> {
+  for (let i = 0; i < retries; i++) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    let raw: string;
+    try {
+      raw = await fs.readFile(jsonlPath, "utf8");
+    } catch {
+      return null;
+    }
+    for (const line of raw.split("\n")) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === "ai-title" && entry.aiTitle) {
+          return entry.aiTitle as string;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Парсит JSONL-файл сессии Claude Code и возвращает структурированный разговор.
  *
  * @param jsonlPath - путь к .jsonl файлу сессии
@@ -56,6 +91,7 @@ export async function parseConversation(
   jsonlPath: string,
   sessionId: string,
   cwd: string,
+  options: { maxRetries?: number; retryIntervalMs?: number } = {},
 ): Promise<ParsedConversation> {
   const raw = await fs.readFile(jsonlPath, "utf8");
   const lines = raw.split("\n").filter((l) => l.trim());
@@ -139,6 +175,13 @@ export async function parseConversation(
       if (!text && toolCalls.length === 0) continue;
       turns.push({ role: "assistant", text, toolCalls });
     }
+  }
+
+  // Если заголовок не найден — ждём: Claude Code записывает ai-title асинхронно
+  const { maxRetries = 8, retryIntervalMs = 2000 } = options;
+  if (title === sessionId && maxRetries > 0) {
+    const aiTitle = await waitForAiTitle(jsonlPath, maxRetries, retryIntervalMs);
+    if (aiTitle) title = aiTitle;
   }
 
   return { sessionId, title, timeStart, project: cwd, turns };

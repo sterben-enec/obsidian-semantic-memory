@@ -127,7 +127,7 @@ describe("parseConversation", () => {
       '{"type":"queue-operation","operation":"dequeue","timestamp":"2026-04-03T10:00:00.000Z"}\n{"parentUuid":null,"isSidechain":false,"type":"user","message":{"role":"user","content":[{"type":"text","text":"Hello"}]},"uuid":"x","isMeta":false}\n',
       "utf8",
     );
-    const result = await parseConversation(tmp, "fallback-id", "/test");
+    const result = await parseConversation(tmp, "fallback-id", "/test", { maxRetries: 0 });
     expect(result.title).toBe("fallback-id");
     await fs.rm(tmp);
   });
@@ -143,7 +143,7 @@ describe("parseConversation", () => {
         '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Sidechain message"}]},"uuid":"y","isMeta":false,"isSidechain":true}\n',
       "utf8",
     );
-    const result = await parseConversation(tmp, "test-id", "/test");
+    const result = await parseConversation(tmp, "test-id", "/test", { maxRetries: 0 });
     const userTexts = result.turns
       .filter((t) => t.role === "user")
       .map((t) => t.text);
