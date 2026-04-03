@@ -171,7 +171,6 @@ program
     if (!vaultPath) {
       process.stderr.write("log-conversation: VAULT_PATH not set\n");
       process.exit(0);
-      return;
     }
 
     // Читаем JSON-пейлоад Stop hook из stdin
@@ -188,7 +187,6 @@ program
     } catch {
       process.stderr.write("log-conversation: invalid JSON on stdin\n");
       process.exit(0);
-      return;
     }
 
     if (!sessionId || !cwd) {
@@ -196,7 +194,6 @@ program
         "log-conversation: missing session_id or cwd in payload\n",
       );
       process.exit(0);
-      return;
     }
 
     const jsonlPath = resolveJSONLPath(sessionId, cwd);
